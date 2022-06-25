@@ -154,6 +154,7 @@ class TestScriptedModels(TorchBaseTest):
 
         self.run_compare_torch(model.input_size, model, backend=backend, use_scripting=True)
 
+
     @pytest.mark.parametrize("backend", backends)
     def test_linear(self, backend):
         class Model(torch.nn.Module):
@@ -396,6 +397,35 @@ class TestMv(TorchBaseTest):
         TorchBaseTest.run_compare_torch((matrix, vector), model, backend=backend, input_as_shape=False)
 
 
+class TestCosineSimilarity(TorchBaseTest):
+    @pytest.mark.parametrize("dim, eps, shape, backend",
+                             itertools.product([0, 1, -1], [0.1, 1e-5, 1e-8], COMMON_SHAPES, backends)
+                            )
+    @pytest.mark.xfail(backend = ("mlprogram", "fp16"),
+                       reason = "Known precision error with mlprogram fp16 backend"
+                       )
+    def test_cosine_similarity(self, backend, dim, eps, shape):
+        class CosineSimilarity(nn.Module):
+            def __init__(self, dim, eps):
+                super(CosineSimilarity, self).__init__()
+                self.cossim = torch.nn.CosineSimilarity(dim=dim, eps=eps)
+
+            def forward(self, x, y):
+                out = self.cossim(x, y)
+                return out
+
+        model = CosineSimilarity(dim, eps)
+        input1 = generate_input_data(shape)
+        input2 = generate_input_data(shape)
+
+        TorchBaseTest.run_compare_torch(
+            [input1, input2], 
+            model,
+            input_as_shape=False, 
+            backend=backend,
+        )
+
+
 class TestDot(TorchBaseTest):
     @pytest.mark.parametrize("vector_length, backend",
                              itertools.product([1, 5, 11], backends)
@@ -407,7 +437,7 @@ class TestDot(TorchBaseTest):
         vector2 = generate_input_data((vector_length, ))
 
         TorchBaseTest.run_compare_torch((vector1, vector2), model, backend=backend, input_as_shape=False)
-
+        
 
 class TestOuter(TorchBaseTest):
     @pytest.mark.parametrize("x_vector_length, y_vector_length, backend",
@@ -3368,6 +3398,34 @@ class TestFlip(TorchBaseTest):
         self.run_compare_torch(
             input_shape, model, backend=backend,
         )
+
+
+class TestBitWiseLogical(TorchBaseTest):
+    @pytest.mark.parametrize(
+        "backend, x_y, op_string",
+        itertools.product(
+            backends,
+            [
+                ([True, False, True, False], [True, True, False, False]),
+                ([[True, False], [True, False]], [[True, True], [False, False]]),
+                ([[True, False], [True, False]], [[1, 0], [2, 1]]),
+                ([-1.5, 0.0, 1.0, 0.0], [0.1, 2.5, 0.0, 0.0]),
+                ([2, 0, -1, 0, 5], [1, 1, 0, 0, -5]),
+            ],
+            [
+                "eq",
+                "ne",
+            ],
+        ),
+    )
+    def test_bitwise_logical(self, backend, x_y, op_string):
+        if not contains_op(torch, op_string):
+            return
+        op_func = getattr(torch, op_string)
+        model = ModuleWrapper(function=op_func)
+        x = torch.tensor(x_y[0])
+        y = torch.tensor(x_y[1])
+        self.run_compare_torch([x, y], model, backend=backend, input_as_shape=False)
 
 
 class TestLogicalAnd(TorchBaseTest):

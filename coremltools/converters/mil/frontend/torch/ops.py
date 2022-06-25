@@ -362,6 +362,27 @@ def constant(context, node):
 
 
 @register_torch_op
+def cosine_similarity(context, node):
+    inputs = _get_inputs(context, node, expected=4)
+    dim = inputs[-2].val
+    eps = inputs[-1].val
+    xy = mb.mul(x=inputs[0], y=inputs[1])
+    sum_xy = mb.reduce_sum(x=xy, axes=[dim])
+
+    xx = mb.mul(x=inputs[0], y=inputs[0])
+    sum_xx = mb.reduce_sum(x=xx, axes=[dim])
+    yy = mb.mul(x=inputs[1], y=inputs[1])
+    sum_yy = mb.reduce_sum(x=yy, axes=[dim])
+
+    mul_sum_xy = mb.mul(x=sum_xx, y=sum_yy)
+    div_12 = mb.maximum(x=mul_sum_xy, y=eps * eps)
+    div_sqrt = mb.sqrt(x=div_12)
+
+    cs = mb.real_div(x=sum_xy, y=div_sqrt, name=node.name)
+    context.add(cs)
+
+
+@register_torch_op
 def selu(context, node):
     ALPHA = 1.6732632423543772
     SCALE = 1.0507009873554805
@@ -472,14 +493,26 @@ def listconstruct(context, node):
 @register_torch_op
 def eq(context, node):
     inputs = _get_inputs(context, node, expected=2)
-    equal_to = mb.equal(x=inputs[0], y=inputs[1], name=node.name)
+    x = inputs[0]
+    y = inputs[1]
+    if is_bool(x.dtype):
+        x = mb.cast(x=x, dtype='int32')
+    if is_bool(y.dtype):
+        y = mb.cast(x=y, dtype='int32')
+    equal_to = mb.equal(x=x, y=y, name=node.name)
     context.add(equal_to)
 
 
 @register_torch_op
 def ne(context, node):
     inputs = _get_inputs(context, node, expected=2)
-    equal_to = mb.not_equal(x=inputs[0], y=inputs[1], name=node.name)
+    x = inputs[0]
+    y = inputs[1]
+    if is_bool(x.dtype):
+        x = mb.cast(x=x, dtype='int32')
+    if is_bool(y.dtype):
+        y = mb.cast(x=y, dtype='int32')
+    equal_to = mb.not_equal(x=x, y=y, name=node.name)
     context.add(equal_to)
 
 
